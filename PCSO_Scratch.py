@@ -13,13 +13,14 @@ import threading
 import time
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-
+import re
+import webbrowser
 
 # Set HEADLESS to False to help bypass 403 errors.
 HEADLESS = False
 
 
-# HyperlinkManager (optional for Bing News branch).
+# Optional: HyperlinkManager for Bing News (if used).
 class HyperlinkManager:
     def __init__(self, text):
         self.text = text
@@ -45,10 +46,10 @@ class LottoFetcher:
         self.master = master
         master.title("Lottery Results Fetcher")
 
-        # Updated lottery options (display values)
+        # Lottery options
         self.lottery_options = ["6/42", "6/45", "6/49", "6/55", "6/58", "EZ2", "Swertres", "4D", "6D"]
 
-        # Mapping from combobox value to expected text in the PCSO "LOTTO GAME" column.
+        # Mapping from selection to expected PCSO game text.
         self.game_map = {
             "6/42": "Lotto 6/42",
             "6/45": "Mega Lotto 6/45",
@@ -61,7 +62,7 @@ class LottoFetcher:
             "6D": "6D Lotto"
         }
 
-        # --- UI Widgets ---
+        # UI Widgets
         ttk.Label(master, text="Select Lottery Type:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.lottery_var = tk.StringVar(value=self.lottery_options[0])
         self.lottery_combo = ttk.Combobox(master, textvariable=self.lottery_var,
@@ -76,7 +77,6 @@ class LottoFetcher:
         self.until_date_entry = DateEntry(master, date_pattern='dd/mm/yyyy')
         self.until_date_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        # Option: Use Bing News instead of PCSO website.
         self.search_entire = tk.BooleanVar(value=False)
         self.search_entire_cb = ttk.Checkbutton(master, text="Bing News", variable=self.search_entire)
         self.search_entire_cb.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
@@ -84,28 +84,22 @@ class LottoFetcher:
         self.fetch_button = ttk.Button(master, text="Fetch Results", command=self.start_fetch_thread)
         self.fetch_button.grid(row=4, column=0, columnspan=2, padx=5, pady=10)
 
-        # Progress bar and label.
         self.progress_bar = ttk.Progressbar(master, orient="horizontal", length=400, mode="determinate")
         self.progress_bar.grid(row=5, column=0, columnspan=2, padx=5, pady=5)
         self.progress_label = ttk.Label(master, text="Progress: 0% - ETA: N/A")
         self.progress_label.grid(row=6, column=0, columnspan=2)
 
-        # Status text box.
         ttk.Label(master, text="Status Updates:").grid(row=7, column=0, padx=5, pady=(10, 0), sticky="w")
         self.status_text = tk.Text(master, width=80, height=10)
         self.status_text.grid(row=8, column=0, columnspan=2, padx=5, pady=5)
 
-        # Final results: now using a Treeview widget.
+        # Treeview for final results.
         self.results_frame = ttk.Frame(master)
         self.results_frame.grid(row=9, column=0, columnspan=2, padx=5, pady=(10, 0), sticky="nsew")
-
-        # Final Results label and count label.
         self.results_label = ttk.Label(self.results_frame, text="Final Results:")
         self.results_label.grid(row=0, column=0, sticky="w")
         self.draw_count_label = ttk.Label(self.results_frame, text="0 Draws Fetched")
         self.draw_count_label.grid(row=0, column=1, sticky="w", padx=10)
-
-        # Create the Treeview.
         self.results_tree = ttk.Treeview(master, columns=("game", "combination", "draw_date", "jackpot", "winners"),
                                          show="headings")
         self.results_tree.heading("game", text="LOTTO GAME")
@@ -119,8 +113,6 @@ class LottoFetcher:
         self.results_tree.column("jackpot", width=120)
         self.results_tree.column("winners", width=80)
         self.results_tree.grid(row=10, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
-
-        # Vertical scrollbar for Treeview.
         self.tree_scrollbar = ttk.Scrollbar(master, orient="vertical", command=self.results_tree.yview)
         self.results_tree.configure(yscroll=self.tree_scrollbar.set)
         self.tree_scrollbar.grid(row=10, column=2, sticky="ns", padx=(0, 5), pady=5)
@@ -165,7 +157,7 @@ class LottoFetcher:
             self.master.after(0, lambda: messagebox.showerror("Date Error", err))
             return
 
-        # Adjust starting date: subtract 1 day from the user-input from_date.
+        # Adjust starting date: subtract 1 day from user-input From Date.
         effective_from_date = from_date_obj - relativedelta(days=1)
         self.log_status(f"Effective starting date for search: {effective_from_date.strftime('%d/%m/%Y')}")
 
@@ -174,7 +166,6 @@ class LottoFetcher:
         self.master.after(0, lambda: self.progress_bar.configure(value=0))
         self.master.after(0, lambda: self.progress_label.configure(text="Progress: 0% - ETA: N/A"))
         self.master.after(0, lambda: self.status_text.delete("1.0", tk.END))
-        # Clear Treeview
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
 
@@ -219,7 +210,6 @@ class LottoFetcher:
                 search_box.submit()
                 time.sleep(3)
                 results = driver.find_elements(By.CSS_SELECTOR, "li.b_algo")
-                # For Bing News, update title with headlines count.
                 headlines = []
                 for result in results:
                     try:
@@ -302,7 +292,6 @@ class LottoFetcher:
             self.update_progress(current_step, start_time)
 
             self.log_status("Step 7: Scraping results and filtering by date and lottery type...")
-            # Create a list for rows (without header).
             draws = []
             expected_game = self.game_map.get(lottery_type, "").strip().lower()
             date_formats = ["%m/%d/%Y", "%d/%m/%Y", "%m/%d/%Y %I:%M %p", "%d/%m/%Y %I:%M %p"]
@@ -332,7 +321,14 @@ class LottoFetcher:
                             continue
                         if expected_game and expected_game not in game_name:
                             continue
-                        draws.append((cells[0].text.strip(), combination, draw_date, jackpot, winners))
+                        # Sort the combination numbers in ascending order.
+                        parts = re.split(r'[-\s]+', combination)
+                        try:
+                            sorted_parts = sorted(parts, key=lambda x: int(x))
+                            sorted_combination = "-".join(sorted_parts)
+                        except Exception:
+                            sorted_combination = combination
+                        draws.append((cells[0].text.strip(), sorted_combination, draw_date, jackpot, winners))
                 try:
                     next_buttons = driver.find_elements(By.LINK_TEXT, "Next")
                     if next_buttons:
@@ -368,17 +364,11 @@ class LottoFetcher:
             else:
                 num_draws = len(draws)
                 self.master.title(f"Lottery Results Fetcher - {num_draws} Draws Fetched")
-
-            # Clear existing Treeview items.
             for item in self.results_tree.get_children():
                 self.results_tree.delete(item)
-            # Insert each fetched draw into the Treeview.
             for row in draws:
                 self.results_tree.insert("", tk.END, values=row)
-
-            # Update the count label next to "Final Results:"
-            self.draw_count_label.config(text=f"{num_draws} Draws Fetched")
-
+            self.draw_count_label.config(text=f"{len(draws)} Draws Fetched")
             self.log_status("Fetching from PCSO completed successfully.")
         except Exception as e:
             error_msg = f"Error fetching results: {e}"
