@@ -16,6 +16,9 @@ FILE_COLUMNS = ["DN", "Draw Date", "L1", "L2", "L3", "L4", "L5", "L6"]
 FILE_DATE_FORMAT = "%d-%b-%y"  # e.g., "01-Feb-25" (used in file saving/reading)
 TK_DATE_PATTERN = "dd-mm-yy"   # e.g., "01-02-25" (used by tkcalendar DateEntry)
 
+# Display date format for search results: e.g., "Feb 01, 2025"
+DISPLAY_DATE_FORMAT = "%b %d, %Y"
+
 # Mode options (text filenames)
 MODE_OPTIONS = ["6_42.txt", "6_45.txt", "6_49.txt", "6_55.txt", "6_58.txt",
                 "EZ2.txt", "Swertres.txt", "4D.txt", "6D.txt"]
@@ -66,6 +69,11 @@ class LotteryApp:
         return f"PCSO Lottery - {file_no}"
 
     def load_data(self):
+        """
+        Load the data from the file, auto-sort by Draw Date and DN,
+        check for duplicate DN and Draw Date, remove duplicates,
+        reassign sequential DN numbers, and update the loaded file.
+        """
         self.data = []
         if not os.path.exists(self.txt_filename):
             response = messagebox.askyesno("File Not Found",
@@ -95,15 +103,37 @@ class LotteryApp:
                 row_dict = {col: row[idx] for idx, col in enumerate(FILE_COLUMNS)}
                 records.append(row_dict)
 
+            # --- Auto-sort the records ---
             try:
-                records.sort(key=lambda r: datetime.strptime(r["Draw Date"].strip(), FILE_DATE_FORMAT))
+                records.sort(key=lambda r: (datetime.strptime(r["Draw Date"].strip(), FILE_DATE_FORMAT),
+                                              int(r["DN"]) if r["DN"].isdigit() else 0))
             except Exception as e:
-                messagebox.showerror("Date Sort Error", f"Error sorting records by date: {e}")
+                messagebox.showerror("Sort Error", f"Error sorting records: {e}")
 
-            for i, row in enumerate(records):
-                row["DN"] = str(i + 1)
+            # --- Omit duplicate DN and Draw Date ---
+            unique_records = []
+            seen_dn = set()
+            seen_date = set()
+            for record in records:
+                dn = record["DN"].strip()
+                draw_date = record["Draw Date"].strip()
+                if dn in seen_dn or draw_date in seen_date:
+                    # Duplicate found; skip this record.
+                    continue
+                seen_dn.add(dn)
+                seen_date.add(draw_date)
+                unique_records.append(record)
 
-            self.data = records
+            # --- Reassign DN sequentially ---
+            for i, record in enumerate(unique_records):
+                record["DN"] = str(i + 1)
+
+            if len(unique_records) < len(records):
+                # Duplicates were found and removed.
+                print("Duplicate records detected and removed. Updating file...")
+
+            self.data = unique_records
+            # Save the sorted and deduplicated data back to the file.
             self.save_data()
             self.heading_label.config(text=self.get_heading_text())
         except Exception as e:
@@ -147,6 +177,7 @@ class LotteryApp:
         search_frame.pack(fill="x")
         search_label = ttk.Label(search_frame, text="Search by Date:")
         search_label.pack(side="left", padx=(20, 5))
+        # The DateEntry still uses the existing TK_DATE_PATTERN.
         self.search_date_entry = DateEntry(search_frame, date_pattern=TK_DATE_PATTERN)
         self.search_date_entry.pack(side="left")
         search_button = ttk.Button(search_frame, text="Search", command=self.search_by_date)
@@ -362,16 +393,21 @@ class LotteryApp:
         self.blink_job = self.root.after(500, self.blink_status, text, color)
 
     def search_by_date(self):
+        # Get the date string from the DateEntry (which uses TK_DATE_PATTERN)
         search_date_raw = self.search_date_entry.get()  # e.g., "01-02-25"
         try:
+            # Parse the selected date using the TK pattern.
             search_date_obj = datetime.strptime(search_date_raw, "%d-%m-%y")
-            search_date_formatted = search_date_obj.strftime(FILE_DATE_FORMAT)
+            # Convert to file format for searching.
+            file_search_date = search_date_obj.strftime(FILE_DATE_FORMAT)
+            # Also prepare the display format: e.g., "Feb 01, 2025"
+            display_search_date = search_date_obj.strftime(DISPLAY_DATE_FORMAT)
         except Exception as e:
             messagebox.showerror("Search Error", "Invalid date selected.")
             return
-        filtered_records = [row for row in self.data if row.get("Draw Date", "").strip() == search_date_formatted]
+        filtered_records = [row for row in self.data if row.get("Draw Date", "").strip() == file_search_date]
         if not filtered_records:
-            messagebox.showinfo("Search Result", f"No records found for {search_date_formatted}.")
+            messagebox.showinfo("Search Result", f"No records found for {display_search_date}.")
         self.refresh_treeview(filtered_records)
 
     def reset_search(self):
