@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 from tkcalendar import DateEntry
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -14,9 +14,17 @@ import time
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
-import webbrowser
+import os
+import tempfile
 
-# Set HEADLESS to False so the browser is visible (minimized) to help bypass 403 errors.
+# Constants for file generation
+BASE_DIR = r"C:\Users\user\PycharmProjects\lottrey"
+FILE_COLUMNS = ["DN", "Draw Date", "L1", "L2", "L3", "L4", "L5", "L6"]
+DATE_FORMAT = "%d-%b-%y"  # e.g., 06-Jan-07
+MODE_OPTIONS = ["6_42.txt", "6_45.txt", "6_49.txt", "6_55.txt", "6_58.txt", "EZ2.txt", "Swertres.txt", "4D.txt",
+                "6D.txt"]
+
+# Set HEADLESS to False so we can minimize the browser window instead of headless mode.
 HEADLESS = False
 
 
@@ -42,18 +50,14 @@ class LottoFetcher:
         # Estimated total pages for progress calculation.
         self.estimated_total_pages = 10
         self.pages_processed = 0
-        self.pages_processed_last_update = 0
-        self.total_bytes = 0  # Total downloaded bytes.
-
-        # For continuous ETA update (ETA removed from display).
-        self.start_time = None
+        self.total_bytes = 0
 
         # For dynamic dot animation.
         self.downloading = False
         self.animate_counter = 0
         self.latest_progress_info = ""
 
-        # --- UI Widgets ---
+        # --- UI Widgets for Scraping ---
         ttk.Label(master, text="Select Lottery Type:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.lottery_var = tk.StringVar(value=self.lottery_options[0])
         self.lottery_combo = ttk.Combobox(master, textvariable=self.lottery_var,
@@ -71,7 +75,7 @@ class LottoFetcher:
         self.fetch_button = ttk.Button(master, text="Fetch Results", command=self.start_fetch_thread)
         self.fetch_button.grid(row=4, column=0, columnspan=2, padx=5, pady=10)
 
-        # Fixed progress info frame.
+        # Fixed progress info frame (with dynamic dot animation).
         self.progress_frame = ttk.Frame(master)
         self.progress_frame.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="w")
         self.progress_info_label = ttk.Label(self.progress_frame, text="Progress: 0%")
@@ -107,21 +111,30 @@ class LottoFetcher:
         self.results_tree.configure(yscroll=self.tree_scrollbar.set)
         self.tree_scrollbar.grid(row=9, column=2, sticky="ns", padx=(0, 5), pady=5)
 
+        # --- UI Widgets for File Generation ---
+        self.file_frame = ttk.Frame(master)
+        self.file_frame.grid(row=10, column=0, columnspan=2, padx=5, pady=(10, 0), sticky="w")
+        ttk.Label(self.file_frame, text="Select File:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.mode_var = tk.StringVar(value=MODE_OPTIONS[0])
+        self.mode_combo = ttk.Combobox(self.file_frame, textvariable=self.mode_var,
+                                       values=MODE_OPTIONS, state="readonly")
+        self.mode_combo.grid(row=0, column=1, padx=5, pady=5)
+        self.gen_file_button = ttk.Button(self.file_frame, text="Generate Update", command=self.generate_file)
+        self.gen_file_button.grid(row=0, column=2, padx=5, pady=5)
+
     def log_status(self, message):
         self.status_text.insert(tk.END, f"{message}\n")
         self.status_text.see(tk.END)
 
     def update_progress_info(self):
-        # Calculate percentage.
         percentage = min(100, (self.pages_processed / self.estimated_total_pages) * 100)
-        # Calculate average page size.
         avg_page_size = self.total_bytes / self.pages_processed if self.pages_processed > 0 else 0
         estimated_total_bytes = self.estimated_total_pages * avg_page_size
         remaining_bytes = estimated_total_bytes - self.total_bytes
         estimated_total_MB = estimated_total_bytes / (1024 * 1024)
         remaining_MB = remaining_bytes / (1024 * 1024)
-        self.latest_progress_info = (f"Estimated Total: {estimated_total_MB:.2f} MB, Remaining: {remaining_MB:.2f} MB, "
-                                     f"{percentage:.0f}%")
+        self.latest_progress_info = (
+            f"Estimated Total: {estimated_total_MB:.2f} MB, Remaining: {remaining_MB:.2f} MB, {percentage:.0f}%")
         self.progress_info_label.config(text=f"Progress: {self.latest_progress_info}")
 
     def animate_progress(self):
@@ -150,8 +163,8 @@ class LottoFetcher:
         thread.start()
 
     def fetch_results(self):
-        lottery_type = self.lottery_var.get().strip()  # e.g., "6/42"
-        from_date_str = self.from_date_entry.get().strip()  # dd/mm/yyyy
+        lottery_type = self.lottery_var.get().strip()
+        from_date_str = self.from_date_entry.get().strip()
         until_date_str = self.until_date_entry.get().strip()
 
         if not from_date_str or not until_date_str:
@@ -165,8 +178,8 @@ class LottoFetcher:
             self.log_status(f"Date format error: {e}")
             return
 
-        # Adjust starting date: subtract 1 day.
-        effective_from_date = from_date_obj - relativedelta(days=1)
+        # Move back one week from the "From Date"
+        effective_from_date = from_date_obj - relativedelta(weeks=1)
         self.log_status(f"Effective starting date for search: {effective_from_date.strftime('%d/%m/%Y')}")
 
         try:
@@ -183,13 +196,8 @@ class LottoFetcher:
             options.add_argument("referer=https://www.pcso.gov.ph/")
             options.add_experimental_option("prefs", {"profile.default_content_setting_values.notifications": 2})
 
-            # Uncomment to use a proxy if necessary.
-            # options.add_argument("--proxy-server=http://your-proxy-server:port")
-
             service = ChromeDriverManager().install()
             driver = webdriver.Chrome(service=ChromeService(executable_path=service), options=options)
-
-            # Hide the PCSO webpage.
             driver.minimize_window()
 
             stealth(driver,
@@ -301,6 +309,12 @@ class LottoFetcher:
                     next_buttons = driver.find_elements(By.LINK_TEXT, "Next")
                     if next_buttons:
                         next_button = next_buttons[0]
+                        # Wait for next_button to be clickable
+                        try:
+                            wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Next")))
+                        except Exception as e:
+                            self.log_status(f"Next button not clickable: {e}")
+                            break
                         if not next_button.get_attribute("href"):
                             self.log_status("No more pages found.")
                             break
@@ -313,8 +327,8 @@ class LottoFetcher:
                     else:
                         self.log_status("Next button not found; assuming last page.")
                         break
-                except Exception:
-                    self.log_status("Error navigating to the next page; ending pagination.")
+                except Exception as e:
+                    self.log_status(f"Error navigating to the next page; ending pagination. {e}")
                     break
 
             # Force final progress to 100%
@@ -346,6 +360,100 @@ class LottoFetcher:
                 driver.quit()
             except Exception:
                 pass
+
+    def generate_file(self):
+        # Load the selected file from BASE_DIR to get the last DN.
+        mode = self.mode_var.get()
+        file_path = os.path.join(BASE_DIR, mode)
+        last_dn = 0
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r") as f:
+                    lines = f.readlines()
+                    if len(lines) > 1:
+                        for line in reversed(lines[1:]):  # Skip header
+                            if line.strip():
+                                parts = line.strip().split()
+                                if parts:
+                                    try:
+                                        last_dn = int(parts[0])
+                                        break
+                                    except Exception:
+                                        continue
+            except Exception as e:
+                self.log_status(f"Error reading file: {e}")
+        new_dn = last_dn + 1
+
+        # Retrieve TreeView items and sort them by Draw Date (oldest first)
+        items = self.results_tree.get_children()
+        rows = []
+        for item in items:
+            values = self.results_tree.item(item)["values"]
+            if len(values) < 3:
+                continue
+            draw_date_str = values[2]
+            try:
+                try:
+                    draw_date_obj = datetime.strptime(draw_date_str, "%m/%d/%Y")
+                except Exception:
+                    draw_date_obj = datetime.strptime(draw_date_str, "%d/%m/%Y")
+            except Exception:
+                continue
+            rows.append((draw_date_obj, values))
+        rows.sort(key=lambda x: x[0])
+
+        output_lines = []
+        header = "\t".join(FILE_COLUMNS)
+        output_lines.append(header)
+        for _, values in rows:
+            if len(values) < 3:
+                continue
+            try:
+                try:
+                    dt_obj = datetime.strptime(values[2], "%m/%d/%Y")
+                except Exception:
+                    dt_obj = datetime.strptime(values[2], "%d/%m/%Y")
+                draw_date_formatted = dt_obj.strftime(DATE_FORMAT)
+            except Exception:
+                continue
+            combination = values[1]
+            numbers = re.split(r'[-\s]+', combination)
+            if len(numbers) != 6:
+                continue
+            # Remove DN from output (only Draw Date and numbers)
+            line = "\t".join([draw_date_formatted] + numbers)
+            output_lines.append(line)
+
+        content = "\n".join(output_lines) + "\n"
+        # Create a temporary file for display (not saved permanently)
+        temp = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt", dir=BASE_DIR)
+        temp.write(content)
+        temp.close()
+        temp_file_path = temp.name
+        self.log_status(f"Temporary file generated: {temp_file_path}")
+        self.show_generated_file(temp_file_path)
+
+    def show_generated_file(self, file_path):
+        try:
+            with open(file_path, "r") as f:
+                content = f.read()
+        except Exception as e:
+            content = f"Error reading file: {e}"
+        win = tk.Toplevel(self.master)
+        win.title("Generated File Content")
+
+        def on_close():
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                self.log_status(f"Error deleting temporary file: {e}")
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+        text_area = scrolledtext.ScrolledText(win, width=80, height=20)
+        text_area.pack(padx=10, pady=10)
+        text_area.insert(tk.END, content)
+        text_area.config(state=tk.DISABLED)
 
 
 if __name__ == "__main__":

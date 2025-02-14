@@ -2,28 +2,39 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
+from tkcalendar import DateEntry  # Requires: pip install tkcalendar
+import subprocess
+import threading
 
-# Base directory for file saving
+# Configuration settings
 BASE_DIR = r"C:\Users\user\PycharmProjects\lottrey"
 
 # Define file columns (the structure remains the same)
 FILE_COLUMNS = ["DN", "Draw Date", "L1", "L2", "L3", "L4", "L5", "L6"]
-DATE_FORMAT = "%d-%b-%y"  # e.g., 06-Jan-07
+
+# Date formats:
+FILE_DATE_FORMAT = "%d-%b-%y"  # e.g., "01-Feb-25" (used in file saving/reading)
+TK_DATE_PATTERN = "dd-mm-yy"   # e.g., "01-02-25" (used by tkcalendar DateEntry)
 
 # Mode options (text filenames)
-MODE_OPTIONS = ["6_42.txt", "6_45.txt", "6_49.txt", "6_55.txt", "6_58.txt", "EZ2.txt", "Swertres.txt", "4D.txt", "6D.txt"]
-
+MODE_OPTIONS = ["6_42.txt", "6_45.txt", "6_49.txt", "6_55.txt", "6_58.txt",
+                "EZ2.txt", "Swertres.txt", "4D.txt", "6D.txt"]
 
 def get_file_filepath(filename):
     """Return the absolute file path by joining BASE_DIR and the filename."""
     return os.path.join(BASE_DIR, filename)
 
-
 class LotteryApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Lottery Data Viewer - CRUD Operations")
+        self.root.title("PCSO Lottery - ")
         self.root.geometry("1050x700")
+
+        # For file watcher: store last modification time
+        self.last_mod_time = None
+        # Flag for blinking status and storage for after job id.
+        self.blinking = False
+        self.blink_job = None
 
         # Mode selection variable (for file selection)
         self.mode_var = tk.StringVar(value="6_42.txt")
@@ -37,22 +48,24 @@ class LotteryApp:
         self.load_data()
         self.refresh_treeview()
         self.auto_fill_new_record()
+        self.start_file_watch()
 
     def get_txt_filename(self, mode_value=None):
-        """Return the file's absolute path based on the mode selection."""
         if mode_value is None:
             mode_value = self.mode_var.get().strip() or "6_42.txt"
         return get_file_filepath(mode_value)
 
     def get_heading_text(self):
-        """Return the heading text, e.g., 'PSCO-42' (based on file name)."""
+        """
+        Return the heading text.
+        Remove the ".txt" extension and replace underscores with slashes.
+        For example, "6_42.txt" becomes "PCSO Lottery - 6/42".
+        """
         mode = self.mode_var.get().strip() or "6_42.txt"
-        file_no = mode.replace(".txt", "")
-        return f"PSCO-{file_no}"
+        file_no = mode.replace(".txt", "").replace("_", "/")
+        return f"PCSO Lottery - {file_no}"
 
     def load_data(self):
-        """Load data from the selected .txt file using tab as the delimiter.
-           If the file is not found, ask the user if a new file should be created."""
         self.data = []
         if not os.path.exists(self.txt_filename):
             response = messagebox.askyesno("File Not Found",
@@ -60,73 +73,89 @@ class LotteryApp:
             if response:
                 self.save_data()  # Create the file with header.
             return
-
         try:
             with open(self.txt_filename, "r", encoding="utf-8") as file:
-                lines = file.readlines()
-                # Remove newline characters and ignore empty lines
-                lines = [line.rstrip("\n") for line in lines if line.strip()]
-                if not lines:
-                    self.data = []
-                    return
-                # First line is header; subsequent lines are records.
-                header = lines[0].split("\t")
-                if header != FILE_COLUMNS:
-                    messagebox.showwarning("Warning",
-                                           "File header does not match expected columns. Data may be corrupted.")
-                for line in lines[1:]:
-                    row = line.split("\t")
-                    if len(row) < len(FILE_COLUMNS):
-                        continue  # skip incomplete lines
-                    row_dict = {col: row[idx] for idx, col in enumerate(FILE_COLUMNS)}
-                    self.data.append(row_dict)
+                lines = [line.rstrip("\n") for line in file if line.strip()]
+            if not lines:
+                self.data = []
+                return
+
+            self.last_mod_time = os.path.getmtime(self.txt_filename)
+            first_line_fields = lines[0].split("\t")
+            has_header = (len(first_line_fields) == len(FILE_COLUMNS) and first_line_fields[0] == "DN")
+
+            records = []
+            data_lines = lines[1:] if has_header else lines
+            for line in data_lines:
+                row = line.split("\t")
+                if len(row) == len(FILE_COLUMNS) - 1:
+                    row = [""] + row
+                if len(row) < len(FILE_COLUMNS):
+                    continue
+                row_dict = {col: row[idx] for idx, col in enumerate(FILE_COLUMNS)}
+                records.append(row_dict)
+
+            try:
+                records.sort(key=lambda r: datetime.strptime(r["Draw Date"].strip(), FILE_DATE_FORMAT))
+            except Exception as e:
+                messagebox.showerror("Date Sort Error", f"Error sorting records by date: {e}")
+
+            for i, row in enumerate(records):
+                row["DN"] = str(i + 1)
+
+            self.data = records
+            self.save_data()
+            self.heading_label.config(text=self.get_heading_text())
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load data: {e}")
 
     def save_data(self):
-        """Save the current data back to the .txt file using tab delimiters."""
         try:
-            # Ensure the directory exists
             os.makedirs(os.path.dirname(self.txt_filename), exist_ok=True)
             with open(self.txt_filename, "w", encoding="utf-8") as file:
-                # Write the header
                 file.write("\t".join(FILE_COLUMNS) + "\n")
-                # Write each record as a tab-delimited line
                 for row in self.data:
                     line = "\t".join([row.get(col, "") for col in FILE_COLUMNS])
                     file.write(line + "\n")
+            self.last_mod_time = os.path.getmtime(self.txt_filename)
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save data: {e}")
 
     def create_widgets(self):
-        # ----------------- Header Frame -----------------
         header_frame = ttk.Frame(self.root, padding=10)
         header_frame.pack(fill="x")
-
         self.heading_label = ttk.Label(header_frame,
                                        text=self.get_heading_text(),
                                        font=("Arial", 24, "bold"),
                                        foreground="blue")
-        self.heading_label.pack(side="top", pady=10)
+        self.heading_label.pack(side="left", pady=10)
+        self.status_label = tk.Label(header_frame, text="", font=("Arial", 14, "bold"))
+        self.status_label.pack(side="right", padx=20)
 
-        # Sub-header for file selection and Last Record button
         sub_header_frame = ttk.Frame(header_frame)
         sub_header_frame.pack(side="top", fill="x")
-
         mode_label = ttk.Label(sub_header_frame, text="Select File:")
         mode_label.pack(side="left", padx=(20, 5))
         self.mode_combo = ttk.Combobox(sub_header_frame, textvariable=self.mode_var,
                                        values=MODE_OPTIONS, width=10, state="readonly")
         self.mode_combo.pack(side="left")
         self.mode_combo.bind("<<ComboboxSelected>>", self.on_mode_change)
-
         self.last_record_button = ttk.Button(sub_header_frame, text="Last Record: N/A", command=self.go_to_last_record)
         self.last_record_button.pack(side="right")
 
-        # ----------------- Treeview Frame -----------------
+        search_frame = ttk.Frame(self.root, padding=10)
+        search_frame.pack(fill="x")
+        search_label = ttk.Label(search_frame, text="Search by Date:")
+        search_label.pack(side="left", padx=(20, 5))
+        self.search_date_entry = DateEntry(search_frame, date_pattern=TK_DATE_PATTERN)
+        self.search_date_entry.pack(side="left")
+        search_button = ttk.Button(search_frame, text="Search", command=self.search_by_date)
+        search_button.pack(side="left", padx=5)
+        reset_button = ttk.Button(search_frame, text="Reset", command=self.reset_search)
+        reset_button.pack(side="left", padx=5)
+
         tree_frame = ttk.Frame(self.root, padding=10)
         tree_frame.pack(fill="both", expand=True)
-
         style = ttk.Style(self.root)
         style.theme_use("clam")
         style.configure("Treeview",
@@ -138,7 +167,6 @@ class LotteryApp:
                         background="#4CAF50",
                         foreground="white",
                         font=("Arial", 10, "bold"))
-
         self.tree = ttk.Treeview(tree_frame, columns=FILE_COLUMNS, show="headings", height=10)
         self.tree.pack(side="left", fill="both", expand=True)
         for col in FILE_COLUMNS:
@@ -149,12 +177,10 @@ class LotteryApp:
         self.tree.configure(yscrollcommand=vsb.set)
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
-        # ----------------- Record Details Frame -----------------
         form_frame = ttk.LabelFrame(self.root, text="Record Details", padding=10)
         form_frame.pack(fill="x", padx=10, pady=10)
-
-        self.entries = {}  # Widgets for each record field
-        self.entry_vars = {}  # Associated StringVars for each field
+        self.entries = {}
+        self.entry_vars = {}
         for idx, col in enumerate(FILE_COLUMNS):
             lbl = ttk.Label(form_frame, text=col)
             lbl.grid(row=0, column=idx, padx=5, pady=5)
@@ -172,7 +198,6 @@ class LotteryApp:
         self.validation_error_label = ttk.Label(form_frame, text="", foreground="red")
         self.validation_error_label.grid(row=2, column=0, columnspan=len(FILE_COLUMNS), pady=(5, 0))
 
-        # ----------------- Button Frame -----------------
         button_frame = ttk.Frame(self.root, padding=10)
         button_frame.pack(fill="x")
         add_button = ttk.Button(button_frame, text="Add", command=self.add_record)
@@ -183,9 +208,10 @@ class LotteryApp:
         delete_button.pack(side="left", padx=5)
         clear_button = ttk.Button(button_frame, text="Clear", command=self.clear_form)
         clear_button.pack(side="left", padx=5)
+        caption_button = ttk.Button(button_frame, text="PCSO", command=self.start_pcso_scraper)
+        caption_button.pack(side="left", padx=5)
 
     def on_mode_change(self, event):
-        """When the mode (file) is changed, update the file path, reload data, and refresh the view."""
         self.txt_filename = self.get_txt_filename()
         self.heading_label.config(text=self.get_heading_text())
         self.load_data()
@@ -193,7 +219,6 @@ class LotteryApp:
         self.clear_form()
 
     def format_var(self, col):
-        """Format the lottery number entries to two digits."""
         value = self.entry_vars[col].get().strip()
         if value:
             try:
@@ -205,16 +230,10 @@ class LotteryApp:
                 pass
 
     def validate_current_inputs(self):
-        """
-        Validate that all fields are filled, numbers are valid and in ascending order,
-        and no duplicate DN or Draw Date exists.
-        During editing, the duplicate check ignores the current record being updated.
-        """
         errors = []
         for col in FILE_COLUMNS:
             if not self.entry_vars[col].get().strip():
                 errors.append(f"{col} cannot be empty.")
-
         lottery_vals = []
         for col in ["L1", "L2", "L3", "L4", "L5", "L6"]:
             val = self.entry_vars[col].get().strip()
@@ -227,35 +246,26 @@ class LotteryApp:
         if len(lottery_vals) == 6:
             for i in range(len(lottery_vals) - 1):
                 if lottery_vals[i] >= lottery_vals[i + 1]:
-                    errors.append(
-                        f"{['L1', 'L2', 'L3', 'L4', 'L5', 'L6'][i]} must be less than {['L1', 'L2', 'L3', 'L4', 'L5', 'L6'][i + 1]}.")
+                    errors.append(f"{['L1','L2','L3','L4','L5','L6'][i]} must be less than {['L1','L2','L3','L4','L5','L6'][i+1]}.")
                     break
-
         current_dn = self.entry_vars["DN"].get().strip()
         current_date = self.entry_vars["Draw Date"].get().strip()
-
-        # Check for duplicate DN in self.data.
         for row in self.data:
-            # When editing, ignore the current record being updated.
             if self.editing_mode and self.original_dn and row.get("DN").strip() == self.original_dn:
                 continue
             if current_dn and row.get("DN").strip() == current_dn:
                 errors.append("Duplicate DN found.")
                 break
-
-        # Check for duplicate Draw Date in self.data.
         for row in self.data:
             if self.editing_mode and self.original_date and row.get("Draw Date").strip() == self.original_date:
                 continue
             if current_date and row.get("Draw Date").strip() == current_date:
                 errors.append("Duplicate Draw Date found.")
                 break
-
         self.validation_error_label.config(text=" | ".join(errors))
         return errors
 
     def auto_fill_new_record(self):
-        """Automatically fill the form with the next DN and today's date."""
         if self.data:
             try:
                 max_dn = max(int(row["DN"]) for row in self.data if row.get("DN"))
@@ -265,24 +275,22 @@ class LotteryApp:
             self.entry_vars["DN"].set(str(next_dn))
         else:
             self.entry_vars["DN"].set("1")
-        today_str = datetime.today().strftime(DATE_FORMAT)
+        today_str = datetime.today().strftime(FILE_DATE_FORMAT)
         self.entry_vars["Draw Date"].set(today_str)
         self.editing_mode = False
         self.original_dn = None
         self.original_date = None
 
-    def refresh_treeview(self):
-        """Clear and repopulate the treeview with data from self.data.
-           Lottery number fields (L1–L6) are formatted as two-digit values."""
+    def refresh_treeview(self, records=None):
         for item in self.tree.get_children():
             self.tree.delete(item)
-        valid_data = [row for row in self.data if row.get("DN")]
+        if records is None:
+            records = self.data
         try:
-            sorted_data = sorted(valid_data, key=lambda x: int(x["DN"]), reverse=True)
+            sorted_data = sorted(records, key=lambda x: int(x["DN"]), reverse=True)
         except ValueError:
-            sorted_data = sorted(valid_data, key=lambda x: x["DN"], reverse=True)
+            sorted_data = sorted(records, key=lambda x: x["DN"], reverse=True)
         for row in sorted_data:
-            # Create a copy so we do not modify the original data
             formatted_row = row.copy()
             for key in ["L1", "L2", "L3", "L4", "L5", "L6"]:
                 value = formatted_row.get(key, "").strip()
@@ -294,14 +302,82 @@ class LotteryApp:
             values = [formatted_row.get(col, "") for col in FILE_COLUMNS]
             self.tree.insert("", "end", values=values)
         if sorted_data:
-            last_record = sorted_data[0]
+            last_record = max(self.data, key=lambda r: datetime.strptime(r["Draw Date"].strip(), FILE_DATE_FORMAT))
             text = f"Last Record: DN: {last_record['DN']}, Draw Date: {last_record['Draw Date']}"
             self.last_record_button.config(text=text)
         else:
             self.last_record_button.config(text="No record available")
+        self.update_status()
+
+    def update_status(self):
+        if self.data:
+            try:
+                last_record = max(self.data, key=lambda r: datetime.strptime(r["Draw Date"].strip(), FILE_DATE_FORMAT))
+                last_date = datetime.strptime(last_record["Draw Date"].strip(), FILE_DATE_FORMAT).date()
+                today_date = datetime.today().date()
+                if last_date > today_date:
+                    self.blinking = True
+                    self.blink_status("Date Error", "red")
+                    return
+                else:
+                    self.blinking = False
+                    if hasattr(self, 'blink_job') and self.blink_job is not None:
+                        self.root.after_cancel(self.blink_job)
+                        self.blink_job = None
+                diff_days = (today_date - last_date).days
+                today_weekday = today_date.weekday()  # Monday=0, Tuesday=1, etc.
+                if today_weekday in [1, 3, 5]:
+                    if diff_days <= 1:
+                        status_text = "UPDATED"
+                        fg_color = "green"
+                    elif diff_days <= 3:
+                        status_text = "Need UPDATE"
+                        fg_color = "red"
+                    else:
+                        status_text = "Need UPDATE"
+                        fg_color = "red"
+                else:
+                    if diff_days < 2:
+                        status_text = "UPDATED"
+                        fg_color = "green"
+                    elif diff_days <= 3:
+                        status_text = "Need UPDATE"
+                        fg_color = "red"
+                    else:
+                        status_text = "Need UPDATE"
+                        fg_color = "red"
+                self.status_label.config(text=status_text, fg=fg_color)
+            except Exception as e:
+                self.status_label.config(text="Status Unknown", fg="black")
+        else:
+            self.status_label.config(text="No Data", fg="black")
+
+    def blink_status(self, text, color):
+        if not self.blinking:
+            self.status_label.config(text=text, fg=color)
+            return
+        current_fg = self.status_label.cget("fg")
+        new_color = color if current_fg == "white" else "white"
+        self.status_label.config(text=text, fg=new_color)
+        self.blink_job = self.root.after(500, self.blink_status, text, color)
+
+    def search_by_date(self):
+        search_date_raw = self.search_date_entry.get()  # e.g., "01-02-25"
+        try:
+            search_date_obj = datetime.strptime(search_date_raw, "%d-%m-%y")
+            search_date_formatted = search_date_obj.strftime(FILE_DATE_FORMAT)
+        except Exception as e:
+            messagebox.showerror("Search Error", "Invalid date selected.")
+            return
+        filtered_records = [row for row in self.data if row.get("Draw Date", "").strip() == search_date_formatted]
+        if not filtered_records:
+            messagebox.showinfo("Search Result", f"No records found for {search_date_formatted}.")
+        self.refresh_treeview(filtered_records)
+
+    def reset_search(self):
+        self.refresh_treeview()
 
     def go_to_last_record(self):
-        """Select and focus the last record in the treeview."""
         children = self.tree.get_children()
         if children:
             last_item = children[0]
@@ -310,7 +386,6 @@ class LotteryApp:
             self.tree.see(last_item)
 
     def clear_form(self):
-        """Clear the input fields and prepare for a new record."""
         for col in FILE_COLUMNS:
             self.entry_vars[col].set("")
         self.auto_fill_new_record()
@@ -318,7 +393,6 @@ class LotteryApp:
         self.editing_mode = False
 
     def on_tree_select(self, event):
-        """When a record is selected in the treeview, populate the form for editing."""
         selected = self.tree.selection()
         if selected:
             values = self.tree.item(selected[0])["values"]
@@ -326,7 +400,6 @@ class LotteryApp:
                 self.entry_vars[col].set(values[idx])
             self.entries["DN"].config(state="disabled")
             self.editing_mode = True
-            # Store original values to exclude them from duplicate checks during editing.
             self.original_dn = self.entry_vars["DN"].get().strip()
             self.original_date = self.entry_vars["Draw Date"].get().strip()
         else:
@@ -334,7 +407,6 @@ class LotteryApp:
         self.validate_current_inputs()
 
     def format_lottery_numbers(self, record):
-        """Format lottery number values to two digits."""
         for key in ["L1", "L2", "L3", "L4", "L5", "L6"]:
             try:
                 record[key] = f"{int(record[key]):02d}"
@@ -343,23 +415,20 @@ class LotteryApp:
         return record
 
     def validate_lottery_order(self, record):
-        """Ensure lottery numbers are in ascending order."""
         try:
             numbers = [int(record[key]) for key in ["L1", "L2", "L3", "L4", "L5", "L6"]]
         except ValueError:
             return "All lottery numbers (L1-L6) must be valid integers."
         for i in range(len(numbers) - 1):
             if numbers[i] >= numbers[i + 1]:
-                return f"{['L1', 'L2', 'L3', 'L4', 'L5', 'L6'][i]} must be less than {['L1', 'L2', 'L3', 'L4', 'L5', 'L6'][i + 1]}."
+                return f"{['L1','L2','L3','L4','L5','L6'][i]} must be less than {['L1','L2','L3','L4','L5','L6'][i+1]}."
         return ""
 
     def add_record(self):
-        """Add a new record after validation."""
         errors = self.validate_current_inputs()
         if errors:
             messagebox.showerror("Validation Error", " | ".join(errors))
             return
-
         new_record = {col: self.entry_vars[col].get().strip() for col in FILE_COLUMNS}
         new_record = self.format_lottery_numbers(new_record)
         if self.data:
@@ -370,20 +439,13 @@ class LotteryApp:
             new_record["DN"] = str(max_dn + 1)
         else:
             new_record["DN"] = "1"
-        if self.data:
-            try:
-                last_date = max(
-                    datetime.strptime(row["Draw Date"], DATE_FORMAT) for row in self.data if row.get("Draw Date"))
-                new_date = datetime.strptime(new_record["Draw Date"], DATE_FORMAT)
-                if new_date <= last_date:
-                    messagebox.showerror("Error", f"Draw Date must be after {last_date.strftime(DATE_FORMAT)}")
-                    return
-            except Exception:
-                messagebox.showerror("Error", "Invalid Draw Date format. Use DD-MMM-YY (e.g., 06-Jan-07).")
-                return
         for row in self.data:
             if row.get("Draw Date") == new_record["Draw Date"]:
                 messagebox.showerror("Error", f"Duplicate Draw Date found: {new_record['Draw Date']}")
+                return
+        for row in self.data:
+            if row.get("DN") == new_record["DN"]:
+                messagebox.showerror("Error", f"Duplicate DN found: {new_record['DN']}")
                 return
         order_error = self.validate_lottery_order(new_record)
         if order_error:
@@ -398,7 +460,6 @@ class LotteryApp:
         messagebox.showinfo("Success", "Record added and changes saved to the file.")
 
     def update_record(self):
-        """Update the selected record after validation."""
         errors = self.validate_current_inputs()
         if errors:
             messagebox.showerror("Validation Error", " | ".join(errors))
@@ -414,16 +475,26 @@ class LotteryApp:
         if order_error:
             messagebox.showerror("Error", order_error)
             return
+        for row in self.data:
+            if self.editing_mode and self.original_date and row.get("Draw Date").strip() == self.original_date:
+                continue
+            if row.get("Draw Date") == new_record["Draw Date"]:
+                messagebox.showerror("Error", f"Duplicate Draw Date found: {new_record['Draw Date']}")
+                return
+        for row in self.data:
+            if self.editing_mode and self.original_dn and row.get("DN").strip() == self.original_dn:
+                continue
+            if row.get("DN") == new_record["DN"]:
+                messagebox.showerror("Error", f"Duplicate DN found: {new_record['DN']}")
+                return
         if not messagebox.askyesno("Confirm Update", "Do you want to update this record and save changes to the file?"):
             return
-
         updated = False
         for row in self.data:
             if str(row.get("DN")).strip() == str(old_values[0]).strip():
                 row.update(new_record)
                 updated = True
                 break
-
         if updated:
             self.save_data()
             self.refresh_treeview()
@@ -433,7 +504,6 @@ class LotteryApp:
             messagebox.showerror("Error", "Record not found for update.")
 
     def delete_record(self):
-        """Delete the selected record and update the file."""
         selected = self.tree.selection()
         if not selected:
             messagebox.showerror("Error", "No record selected for deletion.")
@@ -448,6 +518,28 @@ class LotteryApp:
         self.clear_form()
         messagebox.showinfo("Success", "Record deleted and changes saved to the file.")
 
+    def start_pcso_scraper(self):
+        t = threading.Thread(target=self.run_pcso_scraper, daemon=True)
+        t.start()
+
+    def run_pcso_scraper(self):
+        try:
+            subprocess.run(["python", "PCSO_Scraper.py"], check=True)
+            messagebox.showinfo("PCSO Scraper", "PCSO Scraper completed successfully!")
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("PCSO Scraper Error", f"PCSO Scraper failed: {e}")
+
+    def start_file_watch(self):
+        try:
+            current_mod = os.path.getmtime(self.txt_filename)
+        except Exception:
+            current_mod = None
+        if self.last_mod_time is None:
+            self.last_mod_time = current_mod
+        elif current_mod and current_mod != self.last_mod_time:
+            self.load_data()
+            self.refresh_treeview()
+        self.root.after(5000, self.start_file_watch)
 
 if __name__ == "__main__":
     root = tk.Tk()
