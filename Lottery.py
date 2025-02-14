@@ -11,7 +11,7 @@ FILE_COLUMNS = ["DN", "Draw Date", "L1", "L2", "L3", "L4", "L5", "L6"]
 DATE_FORMAT = "%d-%b-%y"  # e.g., 06-Jan-07
 
 # Mode options (text filenames)
-MODE_OPTIONS = ["42.txt", "45.txt", "49.txt", "55.txt", "58.txt", "EZ2.txt", "Swertres.txt", "4D.txt", "6D.txt"]
+MODE_OPTIONS = ["6_42.txt", "6_45.txt", "6_49.txt", "6_55.txt", "6_58.txt", "EZ2.txt", "Swertres.txt", "4D.txt", "6D.txt"]
 
 
 def get_file_filepath(filename):
@@ -26,7 +26,7 @@ class LotteryApp:
         self.root.geometry("1050x700")
 
         # Mode selection variable (for file selection)
-        self.mode_var = tk.StringVar(value="42.txt")
+        self.mode_var = tk.StringVar(value="6_42.txt")
         self.txt_filename = self.get_txt_filename()  # absolute path with .txt extension
         self.data = []  # List of dictionaries holding records
         self.editing_mode = False
@@ -41,12 +41,12 @@ class LotteryApp:
     def get_txt_filename(self, mode_value=None):
         """Return the file's absolute path based on the mode selection."""
         if mode_value is None:
-            mode_value = self.mode_var.get().strip() or "42.txt"
+            mode_value = self.mode_var.get().strip() or "6_42.txt"
         return get_file_filepath(mode_value)
 
     def get_heading_text(self):
         """Return the heading text, e.g., 'PSCO-42' (based on file name)."""
-        mode = self.mode_var.get().strip() or "42.txt"
+        mode = self.mode_var.get().strip() or "6_42.txt"
         file_no = mode.replace(".txt", "")
         return f"PSCO-{file_no}"
 
