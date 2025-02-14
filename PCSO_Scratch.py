@@ -13,14 +13,13 @@ import threading
 import time
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-import re
-import webbrowser
+
 
 # Set HEADLESS to False to help bypass 403 errors.
 HEADLESS = False
 
 
-# HyperlinkManager helps create clickable hyperlinks in the Text widget.
+# HyperlinkManager (optional for Bing News branch).
 class HyperlinkManager:
     def __init__(self, text):
         self.text = text
@@ -96,18 +95,37 @@ class LottoFetcher:
         self.status_text = tk.Text(master, width=80, height=10)
         self.status_text.grid(row=8, column=0, columnspan=2, padx=5, pady=5)
 
-        # Final results text box.
-        ttk.Label(master, text="Final Results:").grid(row=9, column=0, padx=5, pady=(10, 0), sticky="w")
-        self.results_text = tk.Text(master, width=80, height=10)
-        self.results_text.grid(row=10, column=0, columnspan=2, padx=5, pady=5)
-        self.results_text.tag_config("hyper", foreground="blue", underline=1)
-        self.results_text.bind("<Button-1>", lambda e: self.hyperlink_click(e))
-        self.hyperlink_manager = HyperlinkManager(self.results_text)
+        # Final results: now using a Treeview widget.
+        self.results_frame = ttk.Frame(master)
+        self.results_frame.grid(row=9, column=0, columnspan=2, padx=5, pady=(10, 0), sticky="nsew")
+
+        # Final Results label and count label.
+        self.results_label = ttk.Label(self.results_frame, text="Final Results:")
+        self.results_label.grid(row=0, column=0, sticky="w")
+        self.draw_count_label = ttk.Label(self.results_frame, text="0 Draws Fetched")
+        self.draw_count_label.grid(row=0, column=1, sticky="w", padx=10)
+
+        # Create the Treeview.
+        self.results_tree = ttk.Treeview(master, columns=("game", "combination", "draw_date", "jackpot", "winners"),
+                                         show="headings")
+        self.results_tree.heading("game", text="LOTTO GAME")
+        self.results_tree.heading("combination", text="COMBINATIONS")
+        self.results_tree.heading("draw_date", text="DRAW DATE")
+        self.results_tree.heading("jackpot", text="JACKPOT (PHP)")
+        self.results_tree.heading("winners", text="WINNERS")
+        self.results_tree.column("game", width=100)
+        self.results_tree.column("combination", width=150)
+        self.results_tree.column("draw_date", width=100)
+        self.results_tree.column("jackpot", width=120)
+        self.results_tree.column("winners", width=80)
+        self.results_tree.grid(row=10, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+
+        # Vertical scrollbar for Treeview.
+        self.tree_scrollbar = ttk.Scrollbar(master, orient="vertical", command=self.results_tree.yview)
+        self.results_tree.configure(yscroll=self.tree_scrollbar.set)
+        self.tree_scrollbar.grid(row=10, column=2, sticky="ns", padx=(0, 5), pady=5)
 
         self.total_steps = 8
-
-    def hyperlink_click(self, event):
-        return self.hyperlink_manager.click(event)
 
     def log_status(self, message):
         self.status_text.insert(tk.END, f"{message}\n")
@@ -156,7 +174,9 @@ class LottoFetcher:
         self.master.after(0, lambda: self.progress_bar.configure(value=0))
         self.master.after(0, lambda: self.progress_label.configure(text="Progress: 0% - ETA: N/A"))
         self.master.after(0, lambda: self.status_text.delete("1.0", tk.END))
-        self.master.after(0, lambda: self.results_text.delete("1.0", tk.END))
+        # Clear Treeview
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
 
         try:
             options = Options()
@@ -199,23 +219,17 @@ class LottoFetcher:
                 search_box.submit()
                 time.sleep(3)
                 results = driver.find_elements(By.CSS_SELECTOR, "li.b_algo")
-                self.results_text.delete("1.0", tk.END)
+                # For Bing News, update title with headlines count.
+                headlines = []
                 for result in results:
                     try:
                         title_elem = result.find_element(By.TAG_NAME, "h2")
-                        link_elem = title_elem.find_element(By.TAG_NAME, "a")
-                        title = title_elem.text.strip()
-                        link = link_elem.get_attribute("href")
-                        if title:
-                            self.results_text.insert(tk.END, title,
-                                                     self.hyperlink_manager.add(lambda url=link: webbrowser.open(url)))
-                            self.results_text.insert(tk.END, "\n\n")
+                        headlines.append(title_elem.text.strip())
                     except Exception:
                         continue
-                self.log_status("Bing News search completed.")
-                num_headlines = len(
-                    [line for line in self.results_text.get("1.0", tk.END).splitlines() if line.strip()])
+                num_headlines = len([line for line in headlines if line.strip()])
                 self.master.title(f"Lottery Results Fetcher - {num_headlines} Headlines Fetched")
+                self.log_status("Bing News search completed.")
                 driver.quit()
                 return
 
@@ -288,7 +302,8 @@ class LottoFetcher:
             self.update_progress(current_step, start_time)
 
             self.log_status("Step 7: Scraping results and filtering by date and lottery type...")
-            extracted_results = "LOTTO GAME\tCOMBINATIONS\tDRAW DATE\tJACKPOT (PHP)\tWINNERS\n"
+            # Create a list for rows (without header).
+            draws = []
             expected_game = self.game_map.get(lottery_type, "").strip().lower()
             date_formats = ["%m/%d/%Y", "%d/%m/%Y", "%m/%d/%Y %I:%M %p", "%d/%m/%Y %I:%M %p"]
             page = 1
@@ -317,7 +332,7 @@ class LottoFetcher:
                             continue
                         if expected_game and expected_game not in game_name:
                             continue
-                        extracted_results += f"{cells[0].text.strip()}\t{combination}\t{draw_date}\t{jackpot}\t{winners}\n"
+                        draws.append((cells[0].text.strip(), combination, draw_date, jackpot, winners))
                 try:
                     next_buttons = driver.find_elements(By.LINK_TEXT, "Next")
                     if next_buttons:
@@ -347,13 +362,23 @@ class LottoFetcher:
             current_step += 1
             self.update_progress(current_step, start_time)
 
-            if extracted_results.strip() == "LOTTO GAME\tCOMBINATIONS\tDRAW DATE\tJACKPOT (PHP)\tWINNERS":
-                extracted_results = "No results found for the selected lottery type in the chosen date range."
+            if len(draws) == 0:
+                self.master.title("Lottery Results Fetcher - 0 Draws Fetched")
+                draws = [("No results found for the selected lottery type in the chosen date range", "", "", "", "")]
             else:
-                num_draws = len([line for line in extracted_results.splitlines() if line.strip()]) - 1
+                num_draws = len(draws)
                 self.master.title(f"Lottery Results Fetcher - {num_draws} Draws Fetched")
 
-            self.master.after(0, lambda: self.results_text.insert(tk.END, extracted_results))
+            # Clear existing Treeview items.
+            for item in self.results_tree.get_children():
+                self.results_tree.delete(item)
+            # Insert each fetched draw into the Treeview.
+            for row in draws:
+                self.results_tree.insert("", tk.END, values=row)
+
+            # Update the count label next to "Final Results:"
+            self.draw_count_label.config(text=f"{num_draws} Draws Fetched")
+
             self.log_status("Fetching from PCSO completed successfully.")
         except Exception as e:
             error_msg = f"Error fetching results: {e}"
