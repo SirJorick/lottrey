@@ -1,0 +1,661 @@
+1. Graphical User Interface (GUI) and Layout
+1.1. GUI Loading Priority
+Objective:
+Immediately load and display the GUI upon application startup to ensure immediate user engagement.
+
+Rationale:
+Maintain a responsive interface even when intensive background processes (e.g., data loading, preprocessing, model initialization) are still executing.
+
+Implementation Details:
+
+Asynchronous Rendering:
+Use a dedicated thread or asynchronous method to render the GUI before initiating heavy computations.
+Ensure thread-safe operations so that background tasks do not freeze or delay the interface.
+Splash Screen/Loading Indicator:
+Optionally display a splash screen or loading indicator.
+Keep this indicator visible until critical background processes have sufficiently initialized, at which point the main interface will take over.
+1.2. UI Layout and Design
+General Requirements:
+Auto-Fitting Layout:
+The interface must dynamically adjust to both the window size and the content being displayed.
+
+Split-Panel Design:
+
+Left Panel (Control Area):
+Contains control elements such as combo boxes, input fields, and a “Start Command” button.
+Combo Boxes:
+Allow selection for values (e.g., L1–L6) that influence both the prediction algorithm and the internal data storage.
+Right Panel (Output Display):
+Displays prediction outputs via a TreeView component.
+TreeView Requirements:
+Supports multi-select for copying results.
+Must format results with leading zeros (e.g., “01”, “02”, …) and sort predictions in descending order by probability.
+Additional UI Elements:
+Progress Bar and ETA:
+Real-Time Progress Bar:
+A horizontal progress bar must update in real time from 0% to 100%.
+ETA Indicator:
+Display a real-time Estimated Time of Arrival (ETA).
+Layout:
+Align the progress bar, percentage completion, and ETA on a single horizontal row for a clean presentation.
+Console/Text Output Panel:
+Provide a dedicated, scrollable text area or console panel that logs internal computations.
+Logs must include details on data preprocessing, model training iterations, and prediction calculations.
+This panel should be implemented as a separate split view (either adjacent to or below the main control panel).
+2. Data Handling and Preprocessing
+2.1. Data Loading
+Source Requirements:
+Load historical lottery results from a designated file.
+The file must include:
+Draw Numbers (DN)
+Line Values: L1, L2, …, L6.
+Additional metadata (if available) should include:
+Draw dates, delta values, and machine-specific identifiers.
+2.2. Data Normalization and Frequency Recalculation
+Normalization:
+
+Normalize all loaded data (both DN and each line value) prior to inputting it into any predictive model.
+Apply standard normalization techniques such as:
+Min-Max scaling
+Z-score normalization
+Choose the normalization method based on the data distribution.
+Frequency Analysis:
+
+Recalculate frequency distributions directly from the loaded data.
+Primary Focus:
+Initially focus on recalculating the frequency of L1 values.
+Usage:
+Incorporate these recalculated frequencies into the model’s feature set.
+2.3. Feature Engineering
+Data Splitting and Ensemble Ratios:
+
+Split the dataset into training, validation, and testing subsets using the following ratios:
+60% / 30% / 10%
+70% / 20% / 10%
+80% / 10% / 10%
+90% / 5% / 5%
+Compute average performance metrics across these splits and adopt the averaged configuration to balance the dataset.
+Incorporating Additional Factors:
+
+Physical and Mechanical Factors:
+Ball Weight:
+Nominal weight is 2.6 grams with a 0.2 gram variance.
+Adjust each ball’s effective weight based on its specific line value frequency.
+Note: A higher frequency implies the ball is effectively lighter and, therefore, more likely to be drawn.
+Air Resistance and Pressure:
+Factor in the effects of compressed air (approximately 40 psi) used in the ball ejection mechanism.
+Adjust the ball’s effective weight dynamically based on these factors.
+Additional Parameters:
+Include machine-specific data such as machine ID, calibration data, wear status, and usage statistics.
+Incorporate environmental or operational parameters (e.g., delta changes, day lengths, duration between draws) to identify further patterns influencing predictions.
+3. Prediction Algorithm Development
+3.1. Algorithm Complexity and Integration
+Objective:
+Develop a sophisticated prediction algorithm capable of forecasting:
+
+The next Draw Number (DN)
+The next Line Value (initially for L1, with extendibility to L2–L6)
+The prediction confidence (expressed as a probability or confidence level)
+Techniques for Integration:
+
+Machine Learning Methods:
+Use regression, decision trees, and ensemble methods (e.g., Random Forests) to model the relationships.
+Deep Learning:
+Utilize neural networks to capture non-linear relationships.
+Preferred frameworks: PyTorch or PyTensor (avoid TensorFlow if these are sufficient).
+Advanced Statistical Models:
+Implement techniques such as pattern mapping, matrix transformations, and advanced statistical inference.
+Ensemble/Hybrid Models:
+Combine outputs from multiple models using ensemble strategies to boost overall prediction accuracy.
+3.2. Data Splitting Strategies
+Required Splits:
+Utilize the following ratios for training/validation/testing:
+60/30/10
+70/20/10
+80/10/10
+90/5/5
+Calculate performance metrics across these splits, then average the results to finalize model configuration parameters.
+3.3. Training, Validation, and Testing
+Model Training:
+Replace any placeholder or dummy routines with comprehensive data-preparation and feature-engineering pipelines.
+Develop an efficient deep learning training loop to handle heavy computations.
+Concurrency:
+Offload model training and validation to separate threads or processes.
+Ensure the GUI remains responsive by employing robust concurrency models to synchronize background tasks with the user interface.
+3.4. Execution Control
+Start Command:
+Provide a clearly labeled “Start Command” button to allow the user to explicitly initiate the prediction process.
+Do not start predictions automatically on application launch.
+Dynamic Updates:
+When a user changes any selection (e.g., toggling between L1 and L2–L6):
+Immediately update the prediction model.
+Recalculate frequencies and any related internal data.
+Refresh the output view with updated predictions.
+4. Output Presentation and Formatting
+4.1. TreeView Output
+Displayed Information:
+
+Predicted Draw Number (DN)
+Predicted Line Value (initially for L1; extendable to L2–L6)
+Prediction Confidence: The associated probability or confidence level for each prediction.
+Formatting Requirements:
+
+Display exactly 10 prediction results.
+Format each result with leading zeros (e.g., “01”, “02”, …).
+Sort the predictions in descending order by probability (highest probability first).
+Enable multi-select functionality so users can easily copy results for further analysis.
+4.2. Progress Feedback and Logging
+Progress Bar:
+Update a horizontal progress bar in real time from 0% to 100% as predictions are computed.
+Display the percentage of completion and ETA on a single, horizontally aligned row.
+Console Logging:
+Provide a dedicated, scrollable log panel.
+Log detailed information, including:
+Data preprocessing steps
+Model training iterations
+Intermediate prediction calculations
+Optionally, include filtering options to help users navigate logs by event type.
+5. Production Readiness and Future Enhancements
+5.1. Placeholder vs. Production Code
+Development Phase:
+Initially, utilize dummy data generation and simplified training loops as placeholders.
+Production Transition:
+Replace all placeholder code with:
+Real data-preparation routines.
+Advanced feature-engineering pipelines.
+Deep learning model training using frameworks like PyTorch or PyTensor.
+Efficient multithreading/multiprocessing strategies to guarantee real-time performance.
+5.2. Advanced Feature Considerations
+Enhanced Frequency Analysis:
+Do not rely solely on pre-existing frequency data for L1.
+Develop dynamic methods to compute frequencies directly from the dataset.
+Integration of Additional Physical Factors:
+Incorporate detailed physical and mechanical properties:
+Lottery Ball Weight:
+Use an average weight of 2.6 grams with a 0.2 gram variance.
+Air Resistance and Compressed Air:
+Factor in the effect of ~40 psi compressed air.
+Environmental Conditions:
+Include humidity, machine wear, and other operational factors.
+Exploratory Analysis:
+Investigate correlations and delta changes between draw outcomes.
+Utilize techniques such as delta analysis, time series analysis, and pattern mapping.
+Adjust predictions based on observed deviations in frequency and machine-specific data.
+6. Machine-Specific Data Integration
+Objective:
+Enhance overall prediction accuracy by incorporating machine-specific parameters.
+
+Parameters to Include:
+
+Machine Identifier (ID):
+Unique identifier for each lottery drawing machine.
+Calibration Data:
+Details on the last maintenance, calibration metrics, and any performance adjustments.
+Machine Wear and Tear:
+Indicators of machine condition and operational age.
+Usage Statistics:
+Metrics such as the number of draws processed and operational cycles.
+Environmental Parameters:
+Factors such as operating temperature and humidity.
+Implementation:
+
+Integrate machine-specific parameters during the data loading and preprocessing stage.
+Use these parameters in the feature engineering phase to adjust ball weight calculations and prediction models dynamically.
+Provide options within the GUI to input or update machine-specific details.
+Ensure these factors are incorporated into the final prediction confidence and accuracy calculations.
+Final Remarks
+Strict Adherence:
+Every step—from ensuring a responsive GUI to robust model training and integration of machine-specific data—must be executed exactly as specified.
+
+Physical Modeling Note:
+
+A higher occurrence (frequency) of a specific ball (line value) implies that the ball is lighter and therefore more likely to be drawn.
+Ensure that the calculation for the Next Draw Number (DN) results in a number that is at least one increment greater than the last DN plus any configured increment value. Adjust the prediction logic accordingly if this condition is not met.
+
+
+
+
+
+then repair this code following the above statements 
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+import os
+from collections import Counter
+import threading
+import time
+import random
+import datetime
+import re
+# Global Variables and Constants
+BASE_DIR = r"C:\Users\user\PycharmProjects\lottrey"
+FILE_COLUMNS = ["DN", "Draw Date", "L1", "L2", "L3", "L4", "L5", "L6"]
+MODE_OPTIONS = [
+    "6_42.txt", "6_45.txt", "6_49.txt", "6_55.txt", "6_58.txt",
+    "EZ2.txt", "Swertres.txt", "4D.txt", "6D.txt"
+]
+loaded_file_content = ""
+parsed_file_content = []
+# After normalization, each record will also include fields like "DN_norm", "L1_norm", etc.
+loaded_column_data = []         # Data for the selected lottery column
+frequency_data = {}             # Frequency distribution for lottery line values
+line_avg_diff = {}              # Average DN difference per lottery line value
+most_recent_dn_data = {}        # Most recent DN for each lottery line (excluding zero)
+global_max_diff = 1.0           # Maximum historical DN difference (for normalization)
+# Physical factors (placeholders for production-level calculations)
+BALL_NOMINAL_WEIGHT = 2.6 grams with 0.2 gram variance      # in grams (typical nominal weight)
+AIR_PRESSURE = 40.0             # in psi (compressed air pressure)
+# Data Normalization Function
+def normalize_data(data):
+    #Normalizes the numeric fields (DN and L1–L6) using min–max scaling.
+    #The normalized values are added to each record with a '_norm' suffix.
+    numeric_fields = ["DN", "L1", "L2", "L3", "L4", "L5", "L6"]
+    stats = {}
+    for field in numeric_fields:
+        try:
+            values = [float(record[field]) for record in data if record[field] != "0"]
+            if values:
+                stats[field] = (min(values), max(values))
+            else:
+                stats[field] = (0, 1)
+        except Exception:
+            stats[field] = (0, 1)
+    # Add normalized values to each record
+    for record in data:
+        for field in numeric_fields:
+            try:
+                val = float(record[field])
+                min_val, max_val = stats[field]
+                if max_val - min_val != 0:
+                    record[field + "_norm"] = (val - min_val) / (max_val - min_val)
+                else:
+                    record[field + "_norm"] = 0.0
+            except Exception:
+                record[field + "_norm"] = 0.0
+    return data
+# Helper Functions for File Handling, Data Splitting, and Logging
+def get_file_filepath(filename):
+    return os.path.join(BASE_DIR, filename)
+def append_log(message):
+    timestamp = datetime.datetime.now().strftime("[%Y-%m-%d %H:%M:%S] ")
+    console_log.insert(tk.END, timestamp + message + "\n")
+    console_log.see(tk.END)
+def load_file_content(file_path):
+    try:
+        with open(file_path, 'r') as f:
+            return f.read()
+    except Exception as e:
+        append_log(f"Error reading file {file_path}: {e}")
+        return ""
+def parse_file_content(content):
+    data = []
+    lines = content.strip().splitlines()
+    for line in lines:
+        if not line.strip():
+            continue
+        fields = line.split()
+        if len(fields) == len(FILE_COLUMNS):
+            record = dict(zip(FILE_COLUMNS, fields))
+            data.append(record)
+        else:
+            append_log(f"Parsing Warning: Line skipped due to unexpected number of fields:\n{line}")
+    return data
+def compute_data_splits(data):
+   # Compute multiple training/validation/testing splits based on the ratios:
+    splits = []
+    ratios = [(0.6, 0.3, 0.1), (0.7, 0.2, 0.1), (0.8, 0.1, 0.1), (0.9, 0.05, 0.05)]
+    total = len(data)
+    for ratio in ratios:
+        train = int(total * ratio[0])
+        validation = int(total * ratio[1])
+        test = total - train - validation
+        splits.append((train, validation, test))
+    avg_train = sum(x[0] for x in splits) / len(splits)
+    avg_validation = sum(x[1] for x in splits) / len(splits)
+    avg_test = sum(x[2] for x in splits) / len(splits)
+    append_log(f"Data Splits (avg): Train={avg_train:.1f}, Validation={avg_validation:.1f}, Test={avg_test:.1f}")
+    return splits
+# Machine-Specific Data Integration and Popups
+machine_param_definitions = {
+    "Machine ID": "A unique identifier for each lottery drawing machine.",
+    "Calibration Data": "Information about the machine's calibration, such as the date of the last calibration, measurement results, or adjustments made.",
+    "Wear Status": "An indicator of the machine's physical condition, expressed as a percentage. Higher wear may affect performance.",
+    "Usage Stats": "Data showing how much the machine has been used, such as the number of draws processed or operational hours.",
+    "Temperature": "The ambient or operating temperature at the time of the draw.",
+    "Humidity": "The level of moisture in the air during the draw."
+}
+def show_param_info(param):
+    definition = machine_param_definitions.get(param, "No definition available.")
+    messagebox.showinfo(param, definition)
+def get_machine_factor():
+    #Computes a machine factor based on the wear status.
+    #Extracts the numeric percentage from the combo box value (e.g., "New (0%)" returns 0).
+    try:
+        wear_str = machine_wear_combo.get()
+        match = re.search(r'\((\d+)%\)', wear_str)
+        if match:
+            wear = float(match.group(1))
+        else:
+            wear = 0.0
+        factor = (100 - wear) / 100.0
+        return factor
+    except Exception:
+        return 1.0
+# GUI Event Functions
+def on_mode_select(event=None):
+    selected_mode = mode_combo.get()
+    file_path = get_file_filepath(selected_mode)
+    if not os.path.exists(file_path):
+        try:
+            with open(file_path, 'w') as f:
+                pass
+            append_log(f"File {file_path} created as it did not exist.")
+        except Exception as e:
+            append_log(f"Error creating file {file_path}: {e}")
+            file_path_label.config(text=f"File path: {file_path} (Error creating file)")
+            return
+    file_path_label.config(text=f"File path: {file_path}")
+    global loaded_file_content, parsed_file_content, loaded_column_data, frequency_data, line_avg_diff, most_recent_dn_data
+    loaded_file_content = load_file_content(file_path)
+    parsed_file_content = parse_file_content(loaded_file_content)
+    # Normalize the parsed data (adds normalized fields to each record)
+    parsed_file_content = normalize_data(parsed_file_content)
+    # Reset any previous data
+    loaded_column_data = []
+    frequency_data = {}
+    line_avg_diff = {}
+    most_recent_dn_data = {}
+    clear_treeview()
+    lottery_column_combo.set("L1")
+    on_lottery_column_select()
+def on_lottery_column_select(event=None):
+    selected_column = lottery_column_combo.get()
+    global loaded_column_data, frequency_data, line_avg_diff, most_recent_dn_data
+    if parsed_file_content:
+        # Exclude any records where the selected column is zero
+        loaded_column_data = [record[selected_column] for record in parsed_file_content if record.get(selected_column, "0") != "0"]
+        frequency_data = dict(Counter(loaded_column_data))
+        append_log(f"Frequency data for {selected_column} recalculated: {frequency_data}")
+        # Compute average DN differences per lottery line value (ignoring zero values)
+        diff_map = {}
+        if len(parsed_file_content) > 1:
+            for i in range(1, len(parsed_file_content)):
+                try:
+                    prev_dn = float(parsed_file_content[i - 1]["DN"])
+                    curr_dn = float(parsed_file_content[i]["DN"])
+                    diff = curr_dn - prev_dn
+                    if diff > 0:
+                        line_val = parsed_file_content[i][selected_column]
+                        if line_val != "0":
+                            diff_map.setdefault(line_val, []).append(diff)
+                except Exception:
+                    pass
+        line_avg_diff = {}
+        for line_val, diffs in diff_map.items():
+            if diffs:
+                line_avg_diff[line_val] = sum(diffs) / len(diffs)
+        if line_avg_diff:
+            append_log("Average DN differences per lottery line computed.")
+        else:
+            append_log("No DN difference data available; defaulting to 1.")
+        # Compute the most recent DN for each lottery line value (excluding zeros)
+        most_recent_dn_data = {}
+        for record in reversed(parsed_file_content):
+            val = record.get(selected_column, "0")
+            if val != "0" and val not in most_recent_dn_data:
+                try:
+                    dn_val = float(record["DN"])
+                    most_recent_dn_data[val] = dn_val
+                except Exception:
+                    pass
+        append_log(f"Most recent DN data for {selected_column}: {most_recent_dn_data}")
+    else:
+        append_log("Warning: No parsed file content available. Please load a file first.")
+def clear_treeview():
+    for item in prediction_tree.get_children():
+        prediction_tree.delete(item)
+# Prediction Algorithm and Multi-threading
+def start_prediction():
+    if not parsed_file_content or not frequency_data:
+        append_log("Error: No data available for prediction. Please load a valid file and select a lottery column.")
+        return
+    start_button.config(state="disabled")
+    clear_treeview()
+    # Run the prediction in a separate thread so that the GUI remains responsive.
+    thread = threading.Thread(target=prediction_algorithm)
+    thread.daemon = True
+    thread.start()
+def prediction_algorithm():
+    append_log("Starting prediction algorithm...")
+    # Simulate data splitting (placeholder for ensemble training splits)
+    compute_data_splits(parsed_file_content)
+    total_steps = 10
+    simulated_total_time = 5  # seconds
+    start_time = time.time()
+    for step in range(total_steps + 1):
+        progress = int((step / total_steps) * 100)
+        elapsed = time.time() - start_time
+        remaining = max(simulated_total_time - elapsed, 0)
+        eta_text = f"ETA: {remaining:.1f}s"
+        root.after(0, update_progress, progress, eta_text)
+        time.sleep(simulated_total_time / total_steps)
+    try:
+        last_dn = float(parsed_file_content[-1]["DN"]) if parsed_file_content else 0.0
+    except Exception as e:
+        append_log("Error: Could not determine last DN value.")
+        root.after(0, start_button.config, {"state": "normal"})
+        return
+    # Compute overall average DN difference (ignoring non-positive differences)
+    overall_diffs = []
+    if len(parsed_file_content) > 1:
+        for i in range(1, len(parsed_file_content)):
+            try:
+                diff = float(parsed_file_content[i]["DN"]) - float(parsed_file_content[i - 1]["DN"])
+                if diff > 0:
+                    overall_diffs.append(diff)
+            except Exception:
+                pass
+    overall_avg_diff = sum(overall_diffs) / len(overall_diffs) if overall_diffs else 1.0
+    # Compute maximum historical DN difference for normalization
+    hist_diffs = []
+    if len(parsed_file_content) > 1:
+        for i in range(1, len(parsed_file_content)):
+            try:
+                diff = float(parsed_file_content[i]["DN"]) - float(parsed_file_content[i - 1]["DN"])
+                if diff > 0:
+                    hist_diffs.append(diff)
+            except Exception:
+                pass
+    max_diff = max(hist_diffs) if hist_diffs else 1.0
+    global global_max_diff
+    global_max_diff = max_diff
+    # Retrieve machine factor from the machine parameters (based on wear status)
+    machine_factor = get_machine_factor()
+    # Generate 10 predictions using weighted random selection and adjust with physical factors
+    alpha = 0.5  # Weighting factor between overall and line-specific averages
+    predictions = []
+    numbers = list(frequency_data.keys())
+    counts = list(frequency_data.values())
+    if not numbers:
+        append_log("Error: No frequency data available for prediction.")
+        root.after(0, start_button.config, {"state": "normal"})
+        return
+    max_count = max(counts) if counts else 1
+    for i in range(10):
+        # Select a lottery line based on frequency weights
+        predicted_line = random.choices(numbers, weights=counts, k=1)[0]
+        line_avg = line_avg_diff.get(predicted_line, overall_avg_diff)
+        noise = random.uniform(-0.5, 0.5)
+        # Calculate ball weight adjustment based on frequency occurrence
+        frequency = frequency_data.get(predicted_line, 1)
+        effective_weight = BALL_NOMINAL_WEIGHT * (1 - (frequency / max_count * 0.1))
+        # Adjust effective weight by machine factor (simulated effect of wear)
+        effective_weight *= machine_factor
+        weight_adjustment = BALL_NOMINAL_WEIGHT - effective_weight  # positive if ball is lighter
+        # Combine factors: overall DN difference, line-specific difference, noise, and weight adjustment
+        predicted_increment = alpha * overall_avg_diff + (1 - alpha) * line_avg + noise - weight_adjustment
+        # Incorporate air resistance (dummy scaling factor)
+        predicted_increment *= (AIR_PRESSURE / 40.0)
+        predicted_dn = last_dn + predicted_increment
+        # Dummy probability calculation (adjusted to be within 0 and 1)
+        prob_line = min(frequency / (last_dn + predicted_increment + 1) + random.uniform(0, 0.1), 1.0)
+        predictions.append((predicted_dn, predicted_line, prob_line))
+    # Sort predictions by probability (descending) and ensure exactly 10 results.
+    predictions.sort(key=lambda x: x[2], reverse=True)
+    root.after(0, update_prediction_tree, predictions)
+    append_log("Prediction algorithm completed.")
+    root.after(0, start_button.config, {"state": "normal"})
+    root.after(0, update_progress, 0, "ETA: 0.0s")
+def update_progress(progress, eta_text):
+    progress_bar["value"] = progress
+    progress_label.config(text=f"{progress}%")
+    eta_label.config(text=eta_text)
+def update_prediction_tree(predictions):
+   # Updates the TreeView with prediction results.
+    clear_treeview()
+    for pred in predictions:
+        dn, line, prob = pred
+        dn_formatted = f"{dn:.2f}"
+        try:
+            line_int = int(line)
+            line_formatted = f"{line_int:02d}"
+        except Exception:
+            line_formatted = line
+        prediction_tree.insert("", "end", values=(dn_formatted, line_formatted, f"{prob:.4f}"))
+def copy_selected():
+    selected_items = prediction_tree.selection()
+    if not selected_items:
+        return
+    copied_text = ""
+    for item in selected_items:
+        values = prediction_tree.item(item, "values")
+        copied_text += "\t".join(values) + "\n"
+    root.clipboard_clear()
+    root.clipboard_append(copied_text)
+    append_log("Selected items copied to clipboard.")
+# Splash Screen Function
+def show_splash():
+    splash = tk.Toplevel()
+    splash.overrideredirect(True)
+    width, height = 400, 200
+    x = int(root.winfo_screenwidth() / 2 - width / 2)
+    y = int(root.winfo_screenheight() / 2 - height / 2)
+    splash.geometry(f"{width}x{height}+{x}+{y}")
+    label = ttk.Label(splash, text="Loading Lottery Prediction App...", font=("Arial", 16))
+    label.pack(expand=True)
+    # Destroy splash after 2 seconds
+    root.after(2000, splash.destroy)
+# GUI Layout and Initialization
+root = tk.Tk()
+root.title("Lottery Prediction Application")
+root.geometry("800x600")
+# Show splash screen (non-blocking)
+root.after(0, show_splash)
+# PanedWindow for split-panel design
+paned = ttk.PanedWindow(root, orient=tk.HORIZONTAL)
+paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+# Left Frame – Controls
+left_frame = ttk.Frame(paned, width=250)
+paned.add(left_frame, weight=1)
+mode_label = ttk.Label(left_frame, text="Select Lottery Mode:")
+mode_label.pack(pady=5)
+mode_combo = ttk.Combobox(left_frame, values=MODE_OPTIONS, state="readonly")
+mode_combo.pack(pady=5)
+mode_combo.bind("<<ComboboxSelected>>", on_mode_select)
+default_mode = "6_42.txt"
+mode_combo.set(default_mode)
+file_path_label = ttk.Label(left_frame, text="File path will appear here.")
+file_path_label.pack(pady=5)
+lottery_column_label = ttk.Label(left_frame, text="Select Lottery Column:")
+lottery_column_label.pack(pady=5)
+lottery_columns = ["L1", "L2", "L3", "L4", "L5", "L6"]
+lottery_column_combo = ttk.Combobox(left_frame, values=lottery_columns, state="readonly")
+lottery_column_combo.pack(pady=5)
+lottery_column_combo.bind("<<ComboboxSelected>>", on_lottery_column_select)
+lottery_column_combo.set("L1")
+# Machine-specific parameters section using ComboBoxes and info popups
+machine_frame = ttk.LabelFrame(left_frame, text="Machine Parameters")
+machine_frame.pack(pady=10, fill=tk.X, padx=5)
+# Machine ID
+ttk.Label(machine_frame, text="Machine ID:").grid(row=0, column=0, sticky="e", padx=2, pady=2)
+machine_id_combo = ttk.Combobox(machine_frame, values=["Machine 1", "Machine 2", "Machine 3"], state="readonly")
+machine_id_combo.grid(row=0, column=1, padx=2, pady=2)
+machine_id_combo.set("Machine 1")
+machine_id_info = ttk.Button(machine_frame, text="?", width=2, command=lambda: show_param_info("Machine ID"))
+machine_id_info.grid(row=0, column=2, padx=2, pady=2)
+# Calibration Data
+ttk.Label(machine_frame, text="Calibration Data:").grid(row=1, column=0, sticky="e", padx=2, pady=2)
+machine_calibration_combo = ttk.Combobox(machine_frame,
+                                          values=["Calibrated (2025-01-01)", "Not Calibrated", "Calibration Due"],
+                                          state="readonly")
+machine_calibration_combo.grid(row=1, column=1, padx=2, pady=2)
+machine_calibration_combo.set("Calibrated (2025-01-01)")
+machine_calibration_info = ttk.Button(machine_frame, text="?", width=2, command=lambda: show_param_info("Calibration Data"))
+machine_calibration_info.grid(row=1, column=2, padx=2, pady=2)
+# Wear Status
+ttk.Label(machine_frame, text="Wear Status:").grid(row=2, column=0, sticky="e", padx=2, pady=2)
+machine_wear_combo = ttk.Combobox(machine_frame,
+                                  values=["New (0%)", "Light wear (10%)", "Moderate wear (20%)", "Heavy wear (30%)"],
+                                  state="readonly")
+machine_wear_combo.grid(row=2, column=1, padx=2, pady=2)
+machine_wear_combo.set("New (0%)")
+machine_wear_info = ttk.Button(machine_frame, text="?", width=2, command=lambda: show_param_info("Wear Status"))
+machine_wear_info.grid(row=2, column=2, padx=2, pady=2)
+# Usage Stats
+ttk.Label(machine_frame, text="Usage Stats:").grid(row=3, column=0, sticky="e", padx=2, pady=2)
+machine_usage_combo = ttk.Combobox(machine_frame, values=["Low Usage", "Moderate Usage", "High Usage"], state="readonly")
+machine_usage_combo.grid(row=3, column=1, padx=2, pady=2)
+machine_usage_combo.set("Low Usage")
+machine_usage_info = ttk.Button(machine_frame, text="?", width=2, command=lambda: show_param_info("Usage Stats"))
+machine_usage_info.grid(row=3, column=2, padx=2, pady=2)
+# Temperature
+ttk.Label(machine_frame, text="Temperature:").grid(row=4, column=0, sticky="e", padx=2, pady=2)
+machine_temp_combo = ttk.Combobox(machine_frame, values=["20°C", "22°C", "25°C", "27°C", "30°C"], state="readonly")
+machine_temp_combo.grid(row=4, column=1, padx=2, pady=2)
+machine_temp_combo.set("22°C")
+machine_temp_info = ttk.Button(machine_frame, text="?", width=2, command=lambda: show_param_info("Temperature"))
+machine_temp_info.grid(row=4, column=2, padx=2, pady=2)
+# Humidity
+ttk.Label(machine_frame, text="Humidity:").grid(row=5, column=0, sticky="e", padx=2, pady=2)
+machine_humidity_combo = ttk.Combobox(machine_frame, values=["30%", "40%", "50%", "60%", "70%"], state="readonly")
+machine_humidity_combo.grid(row=5, column=1, padx=2, pady=2)
+machine_humidity_combo.set("50%")
+machine_humidity_info = ttk.Button(machine_frame, text="?", width=2, command=lambda: show_param_info("Humidity"))
+machine_humidity_info.grid(row=5, column=2, padx=2, pady=2)
+start_button = ttk.Button(left_frame, text="PREDICT", command=start_prediction)
+start_button.pack(pady=10)
+# Progress Bar and ETA on a single row
+progress_frame = ttk.Frame(left_frame)
+progress_frame.pack(pady=10, fill=tk.X)
+progress_bar = ttk.Progressbar(progress_frame, orient=tk.HORIZONTAL, mode="determinate")
+progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+progress_label = ttk.Label(progress_frame, text="0%")
+progress_label.pack(side=tk.LEFT, padx=5)
+
+eta_label = ttk.Label(progress_frame, text="ETA: 0.0s")
+eta_label.pack(side=tk.LEFT, padx=5)
+# Right Frame – Prediction Output
+right_frame = ttk.Frame(paned)
+paned.add(right_frame, weight=3)
+prediction_label = ttk.Label(right_frame, text="Prediction Results:")
+prediction_label.pack(pady=5)
+columns = ("Predicted DN", "Predicted Line", "Probability")
+prediction_tree = ttk.Treeview(right_frame, columns=columns, show="headings", height=10, selectmode="extended")
+for col in columns:
+    prediction_tree.heading(col, text=col)
+    prediction_tree.column(col, anchor="center", width=100)
+prediction_tree.pack(pady=5, fill=tk.BOTH, expand=True)
+copy_button = ttk.Button(right_frame, text="Copy Selected", command=copy_selected)
+copy_button.pack(pady=5)
+# Bottom Frame – Console Log Panel
+console_frame = ttk.Frame(root)
+console_frame.pack(fill=tk.BOTH, padx=10, pady=(0, 10))
+console_log = tk.Text(console_frame, height=8)
+console_log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+scrollbar = ttk.Scrollbar(console_frame, command=console_log.yview)
+scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+console_log.configure(yscrollcommand=scrollbar.set)
+append_log("Application started. Loading default mode file...")
+on_mode_select()
+root.mainloop()
+
